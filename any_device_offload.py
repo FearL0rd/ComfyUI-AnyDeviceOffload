@@ -5,65 +5,36 @@ import comfy.model_management
 import gc
 import sys
 
-# --- GLOBAL XFORMERS PATCH ---
-# This runs once when the node loads to install the "Traffic Controller"
+# --- GLOBAL XFORMERS PATCH (CPU FIX) ---
 try:
     import xformers.ops
-    
-    # Save the original function so we don't break GPU usage
     if not hasattr(xformers.ops, "original_memory_efficient_attention"):
         xformers.ops.original_memory_efficient_attention = xformers.ops.memory_efficient_attention
 
     def traffic_controlled_attention(query, key, value, attn_bias=None, p=0.0, scale=None):
-        """
-        Switches between xFormers (GPU) and Standard PyTorch (CPU) automatically.
-        """
-        # 1. If on GPU, use the original xFormers (Fast)
         if query.device.type != "cpu":
-            return xformers.ops.original_memory_efficient_attention(
-                query, key, value, attn_bias, p, scale
-            )
+            return xformers.ops.original_memory_efficient_attention(query, key, value, attn_bias, p, scale)
         
-        # 2. If on CPU, use Standard PyTorch Attention (Compatible)
-        # xFormers layout: (Batch, SeqLen, Heads, Dim)
-        # PyTorch SDPA layout: (Batch, Heads, SeqLen, Dim)
-        
-        # We must transpose from xFormers -> PyTorch layout
+        # CPU Fallback
         q = query.transpose(1, 2)
         k = key.transpose(1, 2)
         v = value.transpose(1, 2)
         
-        # Handle Attention Bias (Masking)
         is_causal = False
         attn_mask = None
-        
-        # xFormers often uses special objects for bias; PyTorch needs a tensor or boolean
         if attn_bias is not None:
-            # Check for Causal mask (LowerTriangular)
             if isinstance(attn_bias, xformers.ops.LowerTriangularMask):
                 is_causal = True
                 attn_mask = None
             elif isinstance(attn_bias, torch.Tensor):
                 attn_mask = attn_bias
         
-        # Call Standard Attention
-        out = F.scaled_dot_product_attention(
-            q, k, v, 
-            attn_mask=attn_mask, 
-            dropout_p=p, 
-            is_causal=is_causal,
-            scale=scale
-        )
-        
-        # Transpose back to xFormers layout: (Batch, SeqLen, Heads, Dim)
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=p, is_causal=is_causal, scale=scale)
         return out.transpose(1, 2)
 
-    # Overwrite the library function with our wrapper
-    print("[AnyDeviceOffload] Installing xFormers CPU-Compatibility Patch...")
     xformers.ops.memory_efficient_attention = traffic_controlled_attention
-
 except ImportError:
-    pass # xFormers not installed, no need to patch
+    pass
 # -----------------------------
 
 def get_available_devices():
@@ -111,34 +82,40 @@ class AnyDeviceOffload:
         is_cpu = device.type == 'cpu'
         offload_target = device if keep_in_memory else torch.device("cpu")
         
-        print(f"[Offload] Target: {device} | CPU Mode: {is_cpu} | Keep: {keep_in_memory}")
+        print(f"[Offload] Target: {device} | Keep: {keep_in_memory}")
 
-        # --- 1. Handle MODEL (UNet) ---
+        # --- 1. Handle MODEL (UNet/Transformer) ---
         if model is not None:
             target_model = None
             if hasattr(model, "model"):
                 target_model = model.model
             
             if target_model:
-                # A. Weight Conversion (Float32 for CPU)
+                # A. Weight Conversion
                 if is_cpu:
                     target_model.to(dtype=torch.float32)
 
                 if keep_in_memory:
                     target_model.to(device)
 
-                # B. CPU Input Auto-Caster
+                # B. UNIVERSAL INPUT CASTER (Fixes 'missing argument' errors)
+                # We use *args and **kwargs to be architecture-agnostic
                 if is_cpu and not hasattr(target_model, "is_cpu_patched"):
-                    print(" -> [CPU] Patching Model inputs (Float16 -> Float32)")
+                    print(" -> [CPU] Applying Universal Input Caster...")
+                    
                     if hasattr(target_model, "diffusion_model"):
                         target_model.diffusion_model.original_forward_cpu = target_model.diffusion_model.forward
 
-                        def cpu_safe_forward(self, x, timesteps=None, context=None, **kwargs):
-                            if x.dtype != torch.float32:
-                                x = x.to(torch.float32)
-                            if context is not None and context.dtype != torch.float32:
-                                context = context.to(torch.float32)
+                        def universal_cpu_forward(self, *args, **kwargs):
+                            # 1. Cast Positional Arguments
+                            new_args = []
+                            for arg in args:
+                                if isinstance(arg, torch.Tensor) and arg.dtype != torch.float32:
+                                    new_args.append(arg.to(torch.float32))
+                                else:
+                                    new_args.append(arg)
                             
+                            # 2. Cast Keyword Arguments
                             new_kwargs = {}
                             for k, v in kwargs.items():
                                 if isinstance(v, torch.Tensor) and v.dtype != torch.float32:
@@ -146,9 +123,10 @@ class AnyDeviceOffload:
                                 else:
                                     new_kwargs[k] = v
 
-                            return self.original_forward_cpu(x, timesteps=timesteps, context=context, **new_kwargs)
+                            # 3. Pass exact structure to original function
+                            return self.original_forward_cpu(*new_args, **new_kwargs)
 
-                        target_model.diffusion_model.forward = types.MethodType(cpu_safe_forward, target_model.diffusion_model)
+                        target_model.diffusion_model.forward = types.MethodType(universal_cpu_forward, target_model.diffusion_model)
                         target_model.is_cpu_patched = True
 
             model.load_device = device
@@ -180,7 +158,7 @@ class AnyDeviceOffload:
                 target_vae = vae.model
 
             if target_vae:
-                # Update State
+                # State Setup
                 if not hasattr(target_vae, "offload_node_state"):
                     target_vae.offload_node_state = {}
                 target_vae.offload_node_state['keep'] = keep_in_memory
