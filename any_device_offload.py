@@ -8,14 +8,16 @@ import sys
 # --- GLOBAL XFORMERS PATCH (CPU FIX) ---
 try:
     import xformers.ops
+    # Save the original function so we don't break GPU usage
     if not hasattr(xformers.ops, "original_memory_efficient_attention"):
         xformers.ops.original_memory_efficient_attention = xformers.ops.memory_efficient_attention
 
     def traffic_controlled_attention(query, key, value, attn_bias=None, p=0.0, scale=None):
+        # 1. If on GPU, use the original xFormers (Fast)
         if query.device.type != "cpu":
             return xformers.ops.original_memory_efficient_attention(query, key, value, attn_bias, p, scale)
         
-        # CPU Fallback
+        # 2. CPU Fallback (Standard PyTorch)
         q = query.transpose(1, 2)
         k = key.transpose(1, 2)
         v = value.transpose(1, 2)
@@ -32,19 +34,36 @@ try:
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=p, is_causal=is_causal, scale=scale)
         return out.transpose(1, 2)
 
+    # Overwrite the library function with our wrapper
     xformers.ops.memory_efficient_attention = traffic_controlled_attention
 except ImportError:
     pass
 # -----------------------------
 
 def get_available_devices():
-    devices = ["cpu"]
+    """
+    Returns a list of devices, sorted by priority.
+    The first item in the list becomes the default selection in ComfyUI.
+    """
+    devices = []
+    
+    # 1. Priority: NVIDIA/AMD GPUs
     if torch.cuda.is_available():
         count = torch.cuda.device_count()
         for i in range(count):
             devices.append(f"cuda:{i}")
+
+    # 2. Priority: Mac Silicon
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         devices.append("mps")
+
+    # 3. Priority: Intel XPU
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        devices.append("xpu")
+        
+    # 4. Fallback: CPU
+    devices.append("cpu")
+    
     return devices
 
 class AnyDeviceOffload:
@@ -53,6 +72,7 @@ class AnyDeviceOffload:
 
     @classmethod
     def INPUT_TYPES(s):
+        # The list is now sorted so the best GPU is index 0
         device_list = get_available_devices()
         return {
             "required": {
@@ -79,6 +99,7 @@ class AnyDeviceOffload:
         except:
             device = torch.device("cpu")
 
+        # CPU Detection
         is_cpu = device.type == 'cpu'
         offload_target = device if keep_in_memory else torch.device("cpu")
         
@@ -98,8 +119,7 @@ class AnyDeviceOffload:
                 if keep_in_memory:
                     target_model.to(device)
 
-                # B. UNIVERSAL INPUT CASTER (Fixes 'missing argument' errors)
-                # We use *args and **kwargs to be architecture-agnostic
+                # B. UNIVERSAL INPUT CASTER (Fixes 'missing argument' errors on WanModel/Flux)
                 if is_cpu and not hasattr(target_model, "is_cpu_patched"):
                     print(" -> [CPU] Applying Universal Input Caster...")
                     
@@ -158,7 +178,7 @@ class AnyDeviceOffload:
                 target_vae = vae.model
 
             if target_vae:
-                # State Setup
+                # Setup Dynamic State
                 if not hasattr(target_vae, "offload_node_state"):
                     target_vae.offload_node_state = {}
                 target_vae.offload_node_state['keep'] = keep_in_memory
