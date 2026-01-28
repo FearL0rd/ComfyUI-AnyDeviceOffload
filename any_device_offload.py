@@ -94,7 +94,7 @@ class AnyDeviceOffload:
         return {
             "required": {
                 "target_device": (device_list, ),
-                "vae_mode": (["Original", "Vae Patched"], ),
+                "vae_mode": (["Vae Patched", "Original"], ),
                 "keep_in_memory": ("BOOLEAN", {"default": True}),
             },
             "optional": {
@@ -281,3 +281,4 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AnyDeviceOffload": "Offload Anything (GPU/CPU)"
 }
+
