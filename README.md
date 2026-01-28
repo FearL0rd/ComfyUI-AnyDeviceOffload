@@ -2,7 +2,7 @@
 
 **Force any Model, VAE, or CLIP to any GPU or CPU—and keep it there (or don't).**
 
-This custom node gives you total control over where your models run and where they live in memory. It solves common "Out of Memory" (OOM) errors, enables multi-GPU workflows, and fixes persistent crashes when trying to run modern workflows (like Flux/SD3) on CPUs or secondary GPUs.
+This custom node gives you total control over where your models run and where they live in memory. It solves common "Out of Memory" (OOM) errors, enables multi-GPU workflows, and fixes persistent crashes when trying to run modern workflows (like Z_Image/Flux) on CPUs or secondary GPUs.
 
 <img width="309" height="220" alt="image" src="https://github.com/user-attachments/assets/c02ec349-d704-43d5-aaa3-c08bbdc658ab" />
 
