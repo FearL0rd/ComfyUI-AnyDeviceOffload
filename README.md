@@ -79,6 +79,15 @@ Add the node **"Offload Anything (GPU/CPU)"** to your workflow (found under `uti
 > **A:** Uncheck **`keep_in_memory`**. This activates the "Kill Switch" which forces a `torch.cuda.empty_cache()` immediately after the VAE finishes decoding.
 
 ---
+### 📦 Release Notes
+ ## v1.0.0 (First Release)
+   This custom node gives you total control over where your models run and where they live in memory. It solves common (OOM) errors, enables multi-GPU workflows, and fixes persistent crashes when trying to run modern workflows (like Z_Image/Flux) on CPUs or secondary GPUs.
+ ## v1.0.1 (Making the default selections)
+   making the default selections set to help beginners in ComfyUI
+ ## v1.0.2 (Add legacy GPU support (SM < 8.0) and fix dynamic device switching)
+   This update introduces a robust "Runtime Device Guard" and intelligent hardware detection to solve crashes on older GPUs and multi-GPU workflows
+
+---
 
 ### 👨‍💻 Credits
 
