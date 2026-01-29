@@ -13,6 +13,9 @@ This custom node gives you total control over where your models run and where th
 <img width="309" height="220" alt="image" src="https://github.com/user-attachments/assets/607eabf1-385c-4ad7-84b8-a2c9b3a8d6da" />
 
 
+* Z_Image_Turbo - 2 steps only using CPU test(Looks like CPU can run with less steps)
+<img width="516" height="370" alt="image" src="https://github.com/user-attachments/assets/937d5c2a-25f6-4c5f-b968-f4cf98628cfc" />
+
 ### ✨ Key Features
 
 * **👇 Manual Device Selection:** Force specific models to run on `cuda:0`, `cuda:1`, `cpu`, or Mac `mps`.
