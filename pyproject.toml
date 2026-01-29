@@ -2,7 +2,7 @@
 [project]
 name = "ComfyUI-AnyDeviceOffload" # Unique identifier for your node. Immutable after creation.
 description = "This custom node gives you total control over where your models run and where they live in memory. It solves common (OOM) errors, enables multi-GPU workflows, and fixes persistent crashes when trying to run modern workflows (like Z_Image/Flux) on CPUs or secondary GPUs."
-version = "1.0.0" # Custom Node version. Must be semantically versioned.
+version = "1.0.2" # Custom Node version. Must be semantically versioned.
 license = { file = "LICENSE.txt" }
 dependencies  = [] # Filled in from requirements.txt
 
@@ -12,4 +12,5 @@ Repository = "https://github.com/FearL0rd/ComfyUI-AnyDeviceOffload"
 [tool.comfy]
 PublisherId = "fearl0rd" # TODO (fill in Publisher ID from Comfy Registry Website).
 DisplayName = "ComfyUI-AnyDeviceOffload" # Display name for the Custom Node. Can be changed later.
+
 Icon = "https://raw.githubusercontent.com/FearL0rd/ComfyUI-AnyDeviceOffload/refs/heads/main/icon.png" # SVG, PNG, JPG or GIF (MAX. 800x400px)
